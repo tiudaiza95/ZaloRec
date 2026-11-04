@@ -39,7 +39,7 @@ from zalo_detector import (
 )
 
 APP = 'Ghi Âm Zalo PC'
-VERSION = '2.9.0 • Windows'
+VERSION = '3.0.0 • Windows'
 DEFAULT_GEMINI_KEY = 'AIzaSyC5m9k5qxcDVayQRL8Hp7O305ZjaV9rfk0'
 BG = ('#F2F2F7', '#111114')
 SURFACE = ('#FFFFFF', '#1C1C1E')

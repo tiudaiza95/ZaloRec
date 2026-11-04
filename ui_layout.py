@@ -238,5 +238,5 @@ def build_ui(app):
                                  font=('Segoe UI', 12), state='disabled', wrap='word')
     app.log_view.pack(fill='both', expand=True, padx=12, pady=(0, 12))
     button(activity, 'Xuất nhật ký hỗ trợ', app.export_logs).pack(anchor='e', padx=12, pady=(0, 12))
-    label(app, 'Ghi Âm Zalo PC  •  2.9.0  •  Lưu trên máy của bạn', 10, MUTED).pack(pady=(0, 10))
+    label(app, 'Ghi Âm Zalo PC  •  3.0.0  •  Lưu trên máy của bạn', 10, MUTED).pack(pady=(0, 10))
     app.log('Đã mở Ghi Âm Zalo PC. Chế độ: ' + ('TỰ GHI' if app.auto_record else 'HỎI TRƯỚC KHI GHI'))

@@ -12,7 +12,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from audio_engine import find_ffmpeg
-VERSION = '2.9.0'
+VERSION = '3.0.0'
 
 
 def run(args):
