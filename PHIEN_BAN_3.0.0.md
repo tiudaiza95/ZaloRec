@@ -21,5 +21,27 @@ Phiên bản nâng cấp lớn chuyên biệt cho trải nghiệm làm việc th
    - Khung tìm kiếm trong Thư viện giờ đây hỗ trợ tìm kiếm sâu đa tầng: Quét tên bản ghi, tên người gọi/liên hệ, ghi chú riêng, nội dung tóm tắt AI, danh sách việc cần làm và toàn văn bóc băng.
    - Hỗ trợ tìm kiếm tiếng Việt không dấu (ví dụ: gõ `hop dong`, `chiet khau`, `thu hai` sẽ tìm thấy các cuộc gọi thảo luận về các chủ đề tương ứng).
 
-5. **Hiển thị Tên người gọi (Caller Contact Name)**:
+5. **Hiển thị Tên người gọi & Nhận diện nâng cao (Caller Contact Name)**:
    - Tự động bóc tách và làm nổi bật thông tin Người liên hệ trong bản mô tả chi tiết phiên ghi âm và trong biên bản xuất bản ghi.
+   - Hỗ trợ nhận diện tên người gọi trực tiếp từ tiến trình gọi chuyên biệt `ZaloCall.exe`.
+
+6. **Xóa bản ghi an toàn trực tiếp từ Thư viện (Delete Recording)**:
+   - Bổ sung nút **"🗑 Xóa"** trên thanh công cụ và phím tắt `Delete`.
+   - Có hộp thoại xác nhận an toàn, tự động dừng phát và dọn sạch cả tệp âm thanh lẫn tệp dữ liệu kèm theo (`.json`).
+
+7. **Tự động Fallback thiết bị âm thanh (Chống mất cuộc gọi)**:
+   - Khi tai nghe Bluetooth hoặc USB bị rút/ngắt kết nối, phần mềm tự động chuyển sang Thiết bị Mặc định của Windows (Default Device) để ghi âm, không làm mất trắng cuộc gọi quan trọng.
+
+8. **Lọc thông minh cuộc gọi rác / cuộc gọi nhỡ (< 5s)**:
+   - Ở chế độ Tự Ghi, các cuộc gọi nhỡ, nháy máy hoặc từ chối kết thúc dưới 5 giây sẽ tự động được dọn dẹp, không làm rác thư viện bản ghi.
+
+9. **Thanh nổi Mini có nút Đánh dấu mốc nhanh (`🚩 Mốc`)**:
+   - Cho phép người dùng lưu lại mốc giây quan trọng (giá cả, địa chỉ, lịch hẹn) ngay trong khi đang gọi điện mà không cần mở to cửa sổ chính.
+
+10. **Tương thích Gemini AI Model & Báo lỗi thông minh**:
+    - Tự động luân chuyển model AI chính thức (`gemini-2.5-flash`, `gemini-1.5-flash`, `gemini-2.0-flash`).
+    - Cảnh báo rõ ràng và cung cấp liên kết lấy key miễn phí khi API Key không hợp lệ.
+
+11. **Cắt đoạn âm thanh đa luồng & Huy hiệu AI**:
+    - Cắt âm thanh chạy ngầm (không đơ cửa sổ), tự động kế thừa tên người gọi và ngày giờ từ bản ghi gốc.
+    - Hiển thị biểu tượng `🤖` trong danh sách để người dùng nhận biết ngay bản ghi nào đã có AI tóm tắt/bóc băng.

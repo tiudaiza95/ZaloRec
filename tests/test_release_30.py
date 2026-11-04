@@ -9,8 +9,16 @@ from recording_library import (
     prepare_audio_for_gemini,
     format_call_minutes,
     filter_records,
-    transcribe_with_gemini
+    transcribe_with_gemini,
+    delete_recording,
+    trim_audio,
+    read_json,
+    atomic_json
 )
+from recording_names import caller_from_title
+from main import resolve_device
+from audio_engine import AudioSession
+import queue
 
 
 class Release30Tests(unittest.TestCase):
@@ -132,6 +140,73 @@ class Release30Tests(unittest.TestCase):
             # Ensure no lingering ~gemini_opt_ temp files in folder
             temp_files = list(self.dir.glob('~gemini_opt_*'))
             self.assertEqual(len(temp_files), 0)
+
+
+    def test_delete_recording(self):
+        wav = self._create_wav('to_delete.wav', duration_sec=1.0)
+        sidecar = wav.with_suffix('.wav.json')
+        sidecar.write_text('{"caller_name": "Test"}', encoding='utf-8')
+        self.assertTrue(wav.is_file())
+        self.assertTrue(sidecar.is_file())
+
+        self.assertTrue(delete_recording(wav))
+        self.assertFalse(wav.exists())
+        self.assertFalse(sidecar.exists())
+
+    def test_trim_audio_preserves_metadata(self):
+        wav = self._create_wav('original.wav', duration_sec=10.0)
+        sidecar = wav.with_suffix('.wav.json')
+        atomic_json(sidecar, {
+            'caller_name': 'Đại gia',
+            'started_at': '2026-11-04T12:00:00',
+            'timestamps': [
+                {'time': 2.0, 'label': 'Trước cắt'},
+                {'time': 6.0, 'label': 'Quan trọng'},
+                {'time': 9.5, 'label': 'Sau cắt'}
+            ],
+            'note': 'Ghi chú gốc'
+        })
+        cut_file = self.dir / 'cut.wav'
+        trim_audio(wav, 4.0, 8.0, cut_file)
+        self.assertTrue(cut_file.is_file())
+        cut_meta = read_json(cut_file.with_suffix('.wav.json'))
+        self.assertEqual(cut_meta.get('caller_name'), 'Đại gia')
+        self.assertEqual(cut_meta.get('duration'), 4.0)
+        self.assertIn('Cắt từ original.wav [4s - 8s]', cut_meta.get('note', ''))
+        self.assertIn('Ghi chú gốc', cut_meta.get('note', ''))
+        # Timestamp at 6.0 should become 2.0 (6.0 - 4.0)
+        ts = cut_meta.get('timestamps', [])
+        self.assertEqual(len(ts), 1)
+        self.assertEqual(ts[0]['time'], 2.0)
+        self.assertEqual(ts[0]['label'], 'Quan trọng')
+
+    def test_caller_from_title_with_call_window(self):
+        # Dedicated call window (e.g. ZaloCall.exe) with contact name only
+        title = 'Trần Văn Mạnh - Zalo'
+        self.assertEqual(caller_from_title(title, is_call_window=True), 'Trần Văn Mạnh')
+        title2 = 'Nguyễn Thị Hoa'
+        self.assertEqual(caller_from_title(title2, is_call_window=True), 'Nguyễn Thị Hoa')
+        # Without is_call_window=True, plain names are not assumed to be calls
+        self.assertEqual(caller_from_title(title2, is_call_window=False), '')
+
+    def test_resolve_device_fallback(self):
+        devices = [
+            {'name': 'Default Speaker', 'index': 0},
+            {'name': 'Headphones USB', 'index': 3}
+        ]
+        # Exact match
+        self.assertEqual(resolve_device(devices, 'Headphones USB  [#3]', fallback_index=0), 3)
+        # Unplugged device falls back to fallback_index
+        self.assertEqual(resolve_device(devices, 'Bluetooth Headset  [#5]', fallback_index=0), 0)
+
+    def test_audio_session_live_bookmark(self):
+        q = queue.Queue()
+        session = AudioSession(q)
+        session.add_bookmark(25.4, 'Bàn giá cả')
+        session.add_bookmark(65.1, 'Chốt hợp đồng')
+        self.assertEqual(len(session._live_bookmarks), 2)
+        self.assertEqual(session._live_bookmarks[0]['time'], 25.4)
+        self.assertEqual(session._live_bookmarks[0]['label'], 'Bàn giá cả')
 
 
 if __name__ == '__main__':

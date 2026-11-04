@@ -99,6 +99,26 @@ def list_recordings(folder):
     return sorted(records, key=lambda r: r['timestamp'], reverse=True)
 
 
+
+def delete_recording(path):
+    path = Path(path)
+    sidecar = path.with_suffix(path.suffix + '.json')
+    import time
+    for _ in range(5):
+        try:
+            if path.is_file():
+                path.unlink()
+            if sidecar.is_file():
+                sidecar.unlink()
+            return True
+        except PermissionError:
+            time.sleep(0.1)
+    if path.is_file():
+        path.unlink()
+    if sidecar.is_file():
+        sidecar.unlink()
+    return True
+
 def rename_recording(path, name):
     path = Path(path)
     name = name.strip()
@@ -345,6 +365,22 @@ def trim_audio(source_path, start_seconds, end_seconds, destination_path=None):
                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     if proc.returncode != 0 or not destination_path.is_file():
         raise RuntimeError('Lỗi cắt âm thanh: ' + proc.stderr[-500:])
+    source_sidecar = source.with_suffix(source.suffix + '.json')
+    if source_sidecar.is_file():
+        meta = read_json(source_sidecar)
+        trimmed_meta = dict(meta)
+        trimmed_meta['duration'] = round(end_seconds - start_seconds, 2)
+        cut_note = f'Cắt từ {source.name} [{int(start_seconds)}s - {int(end_seconds)}s]'
+        old_note = meta.get('note', '').strip()
+        trimmed_meta['note'] = f'{cut_note}\n{old_note}'.strip()
+        if 'timestamps' in meta and isinstance(meta['timestamps'], list):
+            new_ts = []
+            for ts in meta['timestamps']:
+                t = float(ts.get('time', 0))
+                if start_seconds <= t <= end_seconds:
+                    new_ts.append({'time': round(t - start_seconds, 1), 'label': ts.get('label', '')})
+            trimmed_meta['timestamps'] = new_ts
+        atomic_json(destination_path.with_suffix(destination_path.suffix + '.json'), trimmed_meta)
     return destination_path
 
 
@@ -468,13 +504,13 @@ def format_call_minutes(path, metadata=None):
     return "\n".join(lines)
 
 
-def transcribe_with_gemini(api_key, path, model='gemini-3.1-flash-lite', task='transcribe'):
+def transcribe_with_gemini(api_key, path, model='gemini-2.5-flash', task='transcribe'):
     import base64
     import urllib.request
     import urllib.error
     api_key = api_key.strip()
     if not api_key:
-        raise ValueError('Chưa nhập Gemini API Key. Nhập key trong Cài đặt.')
+        raise ValueError('Chưa nhập Gemini API Key. Vui lòng nhập API Key trong Cài đặt (lấy key miễn phí tại https://aistudio.google.com/app/apikey).')
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError('Không tìm thấy file âm thanh.')
@@ -510,22 +546,37 @@ def transcribe_with_gemini(api_key, path, model='gemini-3.1-flash-lite', task='t
             }]
         }
         req_data = json.dumps(payload).encode('utf-8')
-        url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
-        req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'}, method='POST')
-        try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                body = json.loads(resp.read().decode('utf-8'))
-                text = body['candidates'][0]['content']['parts'][0]['text']
-                if task == 'summary':
-                    update_record_metadata(path, summary=text)
-                else:
-                    update_record_metadata(path, transcription=text)
-                return text
-        except urllib.error.HTTPError as ex:
-            err_msg = ex.read().decode('utf-8', errors='ignore')
-            raise RuntimeError(f'Lỗi Gemini API ({ex.code}): {err_msg[:200]}') from ex
-        except Exception as ex:
-            raise RuntimeError(f'Không kết nối được Gemini API: {ex}') from ex
+        models_to_try = [model]
+        for fallback in ('gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'):
+            if fallback not in models_to_try:
+                models_to_try.append(fallback)
+
+        last_error = None
+        for m in models_to_try:
+            url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}'
+            req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'}, method='POST')
+            try:
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    body = json.loads(resp.read().decode('utf-8'))
+                    text = body['candidates'][0]['content']['parts'][0]['text']
+                    if task == 'summary':
+                        update_record_metadata(path, summary=text)
+                    else:
+                        update_record_metadata(path, transcription=text)
+                    return text
+            except urllib.error.HTTPError as ex:
+                last_error = ex
+                if ex.code == 404:
+                    continue
+                err_msg = ex.read().decode('utf-8', errors='ignore')
+                if ex.code in (400, 401, 403):
+                    raise RuntimeError(f'Lỗi xác thực Gemini API ({ex.code}): Vui lòng kiểm tra lại Google Gemini API Key trong Cài đặt (lấy key miễn phí tại https://aistudio.google.com/app/apikey). Chi tiết: {err_msg[:120]}') from ex
+                raise RuntimeError(f'Lỗi Gemini API ({ex.code}): {err_msg[:200]}') from ex
+            except Exception as ex:
+                raise RuntimeError(f'Không kết nối được Gemini API: {ex}') from ex
+
+        if last_error:
+            raise RuntimeError(f'Không tìm thấy model AI phù hợp ({last_error.code}): Vui lòng thử lại sau.') from last_error
     finally:
         if is_temp and upload_path.is_file():
             try:

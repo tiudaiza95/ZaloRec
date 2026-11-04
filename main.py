@@ -40,7 +40,7 @@ from zalo_detector import (
 
 APP = 'Ghi Âm Zalo PC'
 VERSION = '3.0.0 • Windows'
-DEFAULT_GEMINI_KEY = 'AIzaSyC5m9k5qxcDVayQRL8Hp7O305ZjaV9rfk0'
+DEFAULT_GEMINI_KEY = ''
 BG = ('#F2F2F7', '#111114')
 SURFACE = ('#FFFFFF', '#1C1C1E')
 SURFACE_2 = ('#E5E5EA', '#38383A')
@@ -71,12 +71,16 @@ def device_name(dev):
     return f"{dev['name']}  [#{int(dev['index'])}]"
 
 
-def resolve_device(devices, selection):
+def resolve_device(devices, selection, fallback_index=None):
     selected_name = selection.rsplit('[#', 1)[0].strip()
     matches = [d for d in devices if d['name'].strip() == selected_name]
-    if len(matches) != 1:
-        raise RuntimeError('Thiết bị đã thay đổi hoặc trùng tên. Mở Cài đặt, làm mới và chọn lại micro/loa.')
-    return int(matches[0]['index'])
+    if len(matches) == 1:
+        return int(matches[0]['index'])
+    if fallback_index is not None:
+        default_dev = next((d for d in devices if int(d['index']) == fallback_index), None)
+        if default_dev:
+            return int(default_dev['index'])
+    raise RuntimeError('Thiết bị đã thay đổi hoặc trùng tên. Mở Cài đặt, làm mới và chọn lại micro/loa.')
 
 
 class ConfirmPopup(ManagedToplevel):
@@ -289,7 +293,7 @@ class Companion(ctk.CTk):
             return
         if self.auto_record:
             self.current_call_key = signal.key
-            self.current_caller_name = next((caller_from_title(w.title) for w in self.last_windows if w.hwnd == signal.key), '')
+            self.current_caller_name = next((caller_from_title(w.title, is_call_process_window(w)) for w in self.last_windows if w.hwnd == signal.key), '')
             self.lost_call_since = None
             self.log('Tự ghi: ' + signal.reason)
             self._start_recording(automatic=True)
@@ -641,7 +645,7 @@ class Companion(ctk.CTk):
             return
         if self.state() == 'withdrawn':
             self.show_window()
-        caller_name = next((caller_from_title(w.title) for w in self.last_windows if w.hwnd == key), '')
+        caller_name = next((caller_from_title(w.title, is_call_process_window(w)) for w in self.last_windows if w.hwnd == key), '')
         def accept(name=''):
             self.pending_popup = None
             if key is not None and key not in self.active_call_keys:
@@ -672,20 +676,31 @@ class Companion(ctk.CTk):
             # selected endpoint by its full name, never silently switch devices.
             if self.library and self.library.winfo_exists():
                 self.library.stop_playback()
-            microphones, speakers, _, _ = scan_devices()
-            mic = resolve_device(microphones, self.mic_combo.get())
-            speaker = resolve_device(speakers, self.out_combo.get())
+            microphones, speakers, def_mic, def_spk = scan_devices()
+            mic = resolve_device(microphones, self.mic_combo.get(), fallback_index=def_mic)
+            speaker = resolve_device(speakers, self.out_combo.get(), fallback_index=def_spk)
+            chosen_mic_name = self.mic_combo.get().rsplit('[#', 1)[0].strip()
+            mic_dev = next((d for d in microphones if int(d['index']) == mic), None)
+            mic_name = mic_dev['name'] if mic_dev else 'Microphone'
+            if chosen_mic_name and chosen_mic_name != mic_name:
+                self.log(f'Micro đã chọn không sẵn sàng; tự chuyển sang: {mic_name}')
+            chosen_spk_name = self.out_combo.get().rsplit('[#', 1)[0].strip()
+            spk_dev = next((d for d in speakers if int(d['index']) == speaker), None)
+            spk_name = spk_dev['name'] if spk_dev else 'Speaker'
+            if chosen_spk_name and chosen_spk_name != spk_name:
+                self.log(f'Loa đã chọn không sẵn sàng; tự chuyển sang: {spk_name}')
             testing = getattr(self, '_test_mode', False) is True
             self.recorder.session_details = {'devices': {
-                'microphone': next(d['name'] for d in microphones if int(d['index']) == mic),
-                'speaker': next(d['name'] for d in speakers if int(d['index']) == speaker)},
+                'microphone': mic_name,
+                'speaker': spk_name},
                 'purpose': 'audio_check' if testing else 'call'}
             folder = app_root() / 'Data' / 'AudioChecks' if testing else Path(self.folder)
             channel_mode = 'mixed' if testing else getattr(self, 'channel_mode', 'mixed')
             normalize = getattr(self, 'normalize', False)
             denoise = getattr(self, 'denoise', True)
             if not self.recorder.start(mic, speaker, folder, self.format_menu.get(), self.current_caller_name,
-                                      channel_mode=channel_mode, normalize=normalize, denoise=denoise):
+                                      channel_mode=channel_mode, normalize=normalize, denoise=denoise,
+                                      is_automatic=automatic, filter_short_calls=True):
                 self.current_call_key = None
                 return
             if getattr(self, 'enable_audio_cues', True):
@@ -694,7 +709,9 @@ class Companion(ctk.CTk):
                 try:
                     if self.mini_overlay and self.mini_overlay.winfo_exists():
                         self.mini_overlay.destroy()
-                    self.mini_overlay = MiniOverlay(self, on_stop=self.stop_recording, on_expand=self.show_window)
+                    self.mini_overlay = MiniOverlay(self, on_stop=self.stop_recording,
+                                                    on_expand=self.show_window,
+                                                    on_bookmark=self.add_live_bookmark)
                 except Exception:
                     pass
             self._tray_error = False
@@ -721,6 +738,14 @@ class Companion(ctk.CTk):
                 self._notify('Không thể ghi âm: ' + str(ex))
             else:
                 messagebox.showerror('Không thể ghi âm', str(ex), parent=self)
+
+    def add_live_bookmark(self, label='Mốc đánh dấu'):
+        if self.recorder.state == 'recording' and self.recorder.recorded_from:
+            sec = max(0.0, time.monotonic() - self.recorder.recorded_from)
+            self.recorder.add_bookmark(sec, label)
+            if getattr(self, 'enable_audio_cues', True):
+                play_audio_cue('mark')
+            self.log(f'Đã đánh dấu mốc lúc {int(sec//60):02d}:{int(sec%60):02d}')
 
     def stop_recording(self):
         if self.recorder.stop():
@@ -753,7 +778,12 @@ class Companion(ctk.CTk):
         try:
             while True:
                 kind, message = self.events.get_nowait()
-                if kind == 'saved':
+                if kind == 'discarded':
+                    self._restore_controls()
+                    self.current_file_label.configure(text='Đã bỏ qua cuộc gọi nhỡ / quá ngắn (< 5s).')
+                    self.log('Cuộc gọi kết thúc quá nhanh (< 5s, nhỡ hoặc từ chối) — tự động bỏ qua để tránh rác thư viện.')
+                    self._notify('Đã bỏ qua cuộc gọi quá ngắn (< 5s).')
+                elif kind == 'saved':
                     if getattr(self, 'enable_audio_cues', True):
                         play_audio_cue('stop')
                     self._tray_error = bool(read_json(Path(message).with_suffix(Path(message).suffix + '.json')).get('warnings'))
@@ -828,8 +858,13 @@ class Companion(ctk.CTk):
                         self.log('Phím tắt: Bắt đầu ghi âm.')
                         self.manual_confirm()
                 elif kind == 'quit':
-                    self.show_window()
-                    self.on_close()
+                    if self.recorder.state in ('starting', 'recording', 'saving'):
+                        self.show_window()
+                        self.on_close()
+                    else:
+                        self.close_requested = True
+                        self.persist()
+                        self.destroy()
                     if getattr(self, "_destroyed", False) is True:
                         return
         except queue.Empty:
@@ -856,7 +891,7 @@ class Companion(ctk.CTk):
                 current = next((w for w in candidates if w.hwnd == self.current_call_key), None)
                 if current is None and not ended and len(candidates) == 1:
                     candidate = candidates[0]
-                    name = caller_from_title(candidate.title)
+                    name = caller_from_title(candidate.title, is_call_process_window(candidate))
                     old_name = self.current_caller_name
                     if not old_name or not name or plain(old_name) == plain(name):
                         current = candidate
@@ -864,7 +899,7 @@ class Companion(ctk.CTk):
                         self.log('Đã chuyển sang cửa sổ cuộc gọi mới; tiếp tục cùng bản ghi.')
                 if current is not None:
                     self.lost_call_since = None
-                    name = caller_from_title(current.title)
+                    name = caller_from_title(current.title, is_call_process_window(current))
                     if name and not self.current_caller_name:
                         self.recorder.set_caller_name(name)
                         self.current_caller_name = name

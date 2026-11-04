@@ -6,7 +6,7 @@ from ui_effects import fade_in, ManagedToplevel
 from tkinter import ttk, messagebox, filedialog
 import customtkinter as ctk
 from recording_library import (
-    list_recordings, recovery_candidates, rename_recording, matches_date,
+    delete_recording, list_recordings, recovery_candidates, rename_recording, matches_date,
     session_description, filter_records, read_json, atomic_json,
     update_record_metadata, filter_date_range, export_recordings_csv,
     add_timestamp_mark, remove_timestamp_mark, transcribe_with_gemini,
@@ -131,15 +131,23 @@ class TrimDialog(ManagedToplevel):
             if s >= e:
                 self.status_lbl.configure(text='Giây bắt đầu phải nhỏ hơn giây kết thúc!')
                 return
-            self.status_lbl.configure(text='Đang cắt âm thanh...')
+            self.status_lbl.configure(text='Đang cắt âm thanh... Vui lòng đợi.')
             self.update_idletasks()
-            out = trim_audio(self.path, s, e)
-            self.status_lbl.configure(text='Đã cắt thành công!')
-            if self.on_success:
-                self.on_success(out)
-            self.after(500, self.destroy)
+            def run_trim():
+                try:
+                    out = trim_audio(self.path, s, e)
+                    self.after(0, lambda: self._on_trim_success(out))
+                except Exception as ex:
+                    self.after(0, lambda: self.status_lbl.configure(text='Lỗi: ' + str(ex)))
+            threading.Thread(target=run_trim, daemon=True).start()
         except Exception as ex:
             self.status_lbl.configure(text='Lỗi: ' + str(ex))
+
+    def _on_trim_success(self, out):
+        self.status_lbl.configure(text='Đã cắt thành công!')
+        if self.on_success:
+            self.on_success(out)
+        self.after(500, self.destroy)
 
 
 class LibraryWindow(ManagedToplevel):
@@ -215,6 +223,7 @@ class LibraryWindow(ManagedToplevel):
         self.tree.bind('<ButtonRelease-1>', self._select_recording)
         self.tree.bind('<KeyRelease-Up>', self._select_recording)
         self.tree.bind('<KeyRelease-Down>', self._select_recording)
+        self.tree.bind('<Delete>', lambda _: self.delete_selected())
         self.tree.bind('<Return>', lambda _: self.play())
         self.tree.bind('<space>', lambda _: self._key_action(self.play))
         self.tree.bind('<Left>', lambda _: self._key_action(lambda: self._skip(-10)))
@@ -271,6 +280,7 @@ class LibraryWindow(ManagedToplevel):
             ('+ Đánh dấu mốc', self.add_bookmark), ('✂ Cắt đoạn', self.open_trim_dialog),
             ('Bóc băng AI', self.ai_transcribe), ('Tóm tắt AI', self.ai_summary),
             ('📄 Xuất biên bản', self.export_minutes_selected),
+            ('🗑 Xóa', self.delete_selected),
             ('Làm mới', self.refresh)
         ]
         for label, command in btn_items:
@@ -331,7 +341,7 @@ class LibraryWindow(ManagedToplevel):
                 self.owner.gemini_api_key = key
                 self.owner.settings['gemini_api_key'] = key
                 self.owner.persist()
-        self.play_hint.configure(text='Đang gửi audio đến Gemini 3.1 Flash-Lite để tóm tắt & lập việc cần làm... Vui lòng đợi.')
+        self.play_hint.configure(text='Đang gửi audio đến Gemini AI để tóm tắt & lập việc cần làm... Vui lòng đợi.')
         def run_ai():
             try:
                 res = transcribe_with_gemini(key, path, model='gemini-3.1-flash-lite', task='summary')
@@ -484,8 +494,10 @@ class LibraryWindow(ManagedToplevel):
             dur = r['duration']
             dtext = f'{int(dur//60):02d}:{int(dur%60):02d}' if dur is not None else '--:--'
             star = '★ ' if r.get('metadata', {}).get('favorite') else ''
+            meta = r.get('metadata') or {}
+            ai_badge = '🤖 ' if (meta.get('summary') or meta.get('transcription')) else ''
             self.tree.insert('', 'end', iid=str(r['path']),
-                             values=(star + r['name'], r['date'], dtext, r['status']))
+                             values=(star + ai_badge + r['name'], r['date'], dtext, r['status']))
         if selected_id and self.tree.exists(str(selected_id)):
             self.tree.selection_set(str(selected_id))
         total_time = sum((r['duration'] or 0) for r in self._cached_records)
@@ -561,7 +573,7 @@ class LibraryWindow(ManagedToplevel):
 
             summary = metadata.get('summary')
             if summary:
-                ctk.CTkLabel(dialog, text='📌 Tóm tắt & Việc cần làm (Gemini 3.1):', font=('Segoe UI', 13, 'bold'), text_color='#30D158').pack(anchor='w', padx=24, pady=(4, 2))
+                ctk.CTkLabel(dialog, text='📌 Tóm tắt & Việc cần làm (Gemini AI):', font=('Segoe UI', 13, 'bold'), text_color='#30D158').pack(anchor='w', padx=24, pady=(4, 2))
                 sum_box = ctk.CTkTextbox(dialog, height=140, wrap='word', font=('Segoe UI', 12))
                 sum_box.pack(fill='both', expand=True, padx=24, pady=(0, 8))
                 sum_box.insert('1.0', summary)
@@ -751,6 +763,27 @@ class LibraryWindow(ManagedToplevel):
             pass
         self.player.close()
         super().destroy()
+
+    def delete_selected(self, _=None):
+        path = self.selected()
+        if not path:
+            messagebox.showinfo('Xóa bản ghi', 'Hãy chọn một bản ghi cần xóa.', parent=self)
+            return
+        confirm = messagebox.askyesno(
+            'Xác nhận xóa bản ghi',
+            f'Bạn có chắc chắn muốn xóa bản ghi này không?\n\n{path.name}\n\nThao tác này sẽ xóa vĩnh viễn tệp âm thanh và toàn bộ dữ liệu kèm theo.',
+            parent=self
+        )
+        if not confirm:
+            return
+        if self.player.path == path:
+            self.stop_playback()
+        try:
+            delete_recording(path)
+            self.play_hint.configure(text=f'Đã xóa: {path.name}')
+            self.refresh()
+        except Exception as ex:
+            messagebox.showerror('Không thể xóa', str(ex), parent=self)
 
     def rename(self):
         path = self.selected()

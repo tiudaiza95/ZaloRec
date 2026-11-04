@@ -214,7 +214,7 @@ def build_ui(app):
         app.autostart_switch.select()
 
     ai_card = card(settings)
-    label(ai_card, 'Trợ lý AI bóc băng & Tóm tắt (Gemini 3.1 Flash-Lite)', 18, bold=True).pack(anchor='w', padx=20, pady=(16, 4))
+    label(ai_card, 'Trợ lý AI bóc băng & Tóm tắt cuộc gọi (Google Gemini AI)', 18, bold=True).pack(anchor='w', padx=20, pady=(16, 4))
     label(ai_card, 'Dùng để bóc băng và tóm tắt cuộc họp trong Thư viện bản ghi.', 12, MUTED).pack(anchor='w', padx=20, pady=(0, 8))
     app.gemini_key_entry = ctk.CTkEntry(ai_card, placeholder_text='Dán Gemini API Key (miễn phí tại aistudio.google.com)…',
         height=36, show='•')

@@ -83,12 +83,13 @@ class ManagedToplevel(ctk.CTkToplevel):
 
 class MiniOverlay(ManagedToplevel):
     """Floating draggable mini pill with timer, stop button and expand button."""
-    def __init__(self, parent, on_stop, on_expand):
+    def __init__(self, parent, on_stop, on_expand, on_bookmark=None):
         super().__init__(parent)
         self.overrideredirect(True)
         self.attributes('-topmost', True)
         self.configure(fg_color=('#1C1C1E', '#1C1C1E'))
-        self.geometry('260x52+120+120')
+        self.geometry('325x52+120+120' if on_bookmark else '260x52+120+120')
+        self.on_bookmark = on_bookmark
         self._drag_data = {'x': 0, 'y': 0}
 
         container = ctk.CTkFrame(self, fg_color=('#2C2C2E', '#2C2C2E'), corner_radius=16, border_width=1, border_color=('#3A3A3C', '#3A3A3C'))
@@ -114,6 +115,20 @@ class MiniOverlay(ManagedToplevel):
         ctk.CTkButton(container, text='⤢', width=30, height=30, corner_radius=8,
                       fg_color=('#3A3A3C', '#3A3A3C'), hover_color=('#48484A', '#48484A'), text_color='#FFFFFF',
                       font=('Segoe UI', 13, 'bold'), command=on_expand).pack(side='right', padx=2)
+        if on_bookmark:
+            self.mark_btn = ctk.CTkButton(container, text='🚩 Mốc', width=54, height=30, corner_radius=8,
+                                          fg_color=('#FF9500', '#FF9500'), hover_color=('#CC7700', '#CC7700'),
+                                          text_color='#FFFFFF', font=('Segoe UI', 11, 'bold'), command=self._do_bookmark)
+            self.mark_btn.pack(side='right', padx=2)
+
+    def _do_bookmark(self):
+        if getattr(self, 'on_bookmark', None):
+            try:
+                self.on_bookmark()
+                self.mark_btn.configure(text='✓ Lưu')
+                self.after(1000, lambda: self.mark_btn.configure(text='🚩 Mốc') if self.winfo_exists() else None)
+            except Exception:
+                pass
 
     def _start_drag(self, event):
         self._drag_data['x'] = event.x_root - self.winfo_x()

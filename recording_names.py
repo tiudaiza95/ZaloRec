@@ -7,18 +7,20 @@ from datetime import datetime
 CALL_LABEL = r'(?:cuộc gọi(?: đến| đi| video| thoại)?|đang gọi(?: video| thoại)?|gọi video|gọi thoại|incoming call|outgoing call|video call|voice call|calling|zalo call)'
 
 
-def caller_from_title(title: str) -> str:
+def caller_from_title(title: str, is_call_window: bool = False) -> str:
     title = unicodedata.normalize('NFC', title).strip()
-    title = re.sub(r'\s*[-–—|]\s*Zalo\s*$', '', title, flags=re.I)
-    title = re.sub(r'^Zalo\s*[-–—|]\s*', '', title, flags=re.I)
-    # Only strip complete UI labels at the edges, never words inside a name.
-    match = re.match(rf'^{CALL_LABEL}\s*(?:[-–—|:]\s*|(?:với|từ|with|from|to)\s+)(.+)$', title, re.I)
+    clean = re.sub(r'\s*[-–—|]\s*Zalo\s*$', '', title, flags=re.I)
+    clean = re.sub(r'^Zalo\s*[-–—|]\s*', '', clean, flags=re.I)
+    match = re.match(rf'^{CALL_LABEL}\s*(?:[-–—|:]\s*|(?:với|từ|with|from|to)\s+)(.+)$', clean, re.I)
     if match:
         candidate = match.group(1).strip()
     else:
-        match = re.match(rf'^(.+?)\s*[-–—|]\s*{CALL_LABEL}$', title, re.I)
+        match = re.match(rf'^(.+?)\s*[-–—|]\s*{CALL_LABEL}$', clean, re.I)
         candidate = match.group(1).strip() if match else ''
-    if not candidate or re.fullmatch(rf'(?:Zalo|{CALL_LABEL}|đang kết nối|ringing)', candidate, re.I):
+    if not candidate and is_call_window:
+        if not re.search(r'(?<!\w)(?:tin nhan|cai dat|settings|photo viewer|image viewer|file picker)(?!\w)', clean, re.I):
+            candidate = clean
+    if not candidate or re.fullmatch(rf'(?:Zalo|{CALL_LABEL}|đang kết nối|ringing|connecting)', candidate, re.I):
         return ''
     return candidate
 

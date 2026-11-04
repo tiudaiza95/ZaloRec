@@ -247,9 +247,13 @@ class AudioSession:
         self._channel_mode = 'mixed'
         self._normalize = False
         self._denoise = False
+        self._live_bookmarks = []
+        self._is_automatic = False
+        self._filter_short_calls = True
 
     def start(self, microphone: int, speaker: int, folder: Path, file_kind: str, caller_name: str = '',
-              channel_mode: str = 'mixed', normalize: bool = False, denoise: bool = False):
+              channel_mode: str = 'mixed', normalize: bool = False, denoise: bool = False,
+              is_automatic: bool = False, filter_short_calls: bool = True):
         if self.state != 'idle':
             return False
         if pyaudio is None:
@@ -272,6 +276,9 @@ class AudioSession:
         self._channel_mode = channel_mode
         self._normalize = normalize
         self._denoise = bool(denoise)
+        self._live_bookmarks = []
+        self._is_automatic = bool(is_automatic)
+        self._filter_short_calls = bool(filter_short_calls)
         self._session_date = datetime.now()
         self._ended_at = None
         filename = recording_stem(caller_name, self._session_date)
@@ -323,6 +330,11 @@ class AudioSession:
         data['destination'] = str(destination)
         atomic_json(manifest, data)
         self.recording_file = destination
+
+    def add_bookmark(self, seconds, label='Mốc đánh dấu'):
+        sec = max(0.0, round(float(seconds), 1))
+        with self._lock:
+            self._live_bookmarks.append({'time': sec, 'label': str(label)})
 
     def stop(self):
         if self.state not in ('starting', 'recording'):
@@ -414,8 +426,12 @@ class AudioSession:
         details = manifest.get('session_details', {})
         ended_at = (manifest.get('ended_at') if recovering else self._ended_at)
         try:
+            existing_ts = details.get('timestamps', [])
+            combined_ts = list(existing_ts) + list(self._live_bookmarks)
+            combined_ts.sort(key=lambda m: m.get('time', 0))
             atomic_json(destination.with_suffix(destination.suffix + '.json'),
                         {'duration': duration, 'status': label, 'sources': available,
+                         'timestamps': combined_ts,
                          'created': datetime.now().isoformat(), 'recovered': recovering,
                          'started_at': manifest.get('created'), 'ended_at': ended_at,
                          'devices': details.get('devices', {}), 'purpose': details.get('purpose', 'call'),
@@ -453,6 +469,17 @@ class AudioSession:
                 self.events.put(('blocked', 'Thiết bị chưa dừng. Đang chờ giải phóng micro/loa; chưa thể ghi phiên mới.'))
                 return
             self._read_worker_status()
+            if getattr(self, '_is_automatic', False) and getattr(self, '_filter_short_calls', True) and self.session_details.get('purpose') != 'audio_check':
+                sources = {role: temp / f'{role}.wav' for role in ('speaker', 'microphone')}
+                available = [role for role, p in sources.items() if track_duration(p) > 0]
+                max_dur = max((track_duration(sources[r]) for r in available), default=0.0)
+                if max_dur < 5.0:
+                    shutil.rmtree(temp, ignore_errors=True)
+                    outcome = ('discarded', f'Cuộc gọi kết thúc quá nhanh ({max_dur:.1f}s, nhỡ hoặc từ chối) — tự động bỏ qua.')
+                    self.recorded_from = None
+                    self.state = 'idle'
+                    self.events.put(outcome)
+                    return
             self._save_tracks(temp, self.recording_file, self._file_kind)
             outcome = ('saved', str(self.recording_file))
         except Exception as ex:
