@@ -145,12 +145,18 @@ def session_description(path):
             return datetime.fromisoformat(value).strftime('%H:%M:%S • %d/%m/%Y')
         except (ValueError, TypeError):
             return 'Không có dữ liệu (bản cũ hoặc phiên bị gián đoạn)'
+    caller = data.get('caller_name', '').strip()
     devices = data.get('devices') or {}
-    lines = [f"Bắt đầu: {stamp(data.get('started_at'))}",
-             f"Kết thúc: {stamp(data.get('ended_at'))}",
-             f"Micro: {devices.get('microphone', 'Chưa lưu thông tin')}",
-             f"Loa / tai nghe: {devices.get('speaker', 'Chưa lưu thông tin')}",
-             f"Nguồn thu: {data.get('status', 'Không có dữ liệu')}"]
+    lines = []
+    if caller:
+        lines.append(f"Người liên hệ: {caller}")
+    lines.extend([
+        f"Bắt đầu: {stamp(data.get('started_at'))}",
+        f"Kết thúc: {stamp(data.get('ended_at'))}",
+        f"Micro: {devices.get('microphone', 'Chưa lưu thông tin')}",
+        f"Loa / tai nghe: {devices.get('speaker', 'Chưa lưu thông tin')}",
+        f"Nguồn thu: {data.get('status', 'Không có dữ liệu')}"
+    ])
     for role, duration in (data.get('source_durations') or {}).items():
         lines.append(f"{'Micro' if role == 'microphone' else 'Loa'}: {duration:.1f} giây")
     if data.get('warnings'):
@@ -180,7 +186,22 @@ def update_record_metadata(path, **changes):
 
 def filter_records(records, query='', period='Tất cả ngày', starred=False, order='Mới nhất'):
     query = search_key(query.strip())
-    items = [r for r in records if query in search_key(r['name'] + ' ' + str(r.get('metadata', {}).get('note', '')))
+    def _matches_query(r):
+        if not query:
+            return True
+        meta = r.get('metadata') or {}
+        search_targets = [
+            r.get('name', ''),
+            str(meta.get('note', '')),
+            str(meta.get('summary', '')),
+            str(meta.get('transcription', '')),
+            str(meta.get('caller_name', ''))
+        ]
+        for ts in meta.get('timestamps', []):
+            search_targets.append(str(ts.get('label', '')))
+        return query in search_key(' '.join(search_targets))
+
+    items = [r for r in records if _matches_query(r)
              and matches_date(r, period) and (not starred or r.get('metadata', {}).get('favorite') is True)]
     if order == 'Tên A–Z':
         return sorted(items, key=lambda r: search_key(r['name']))
@@ -327,6 +348,126 @@ def trim_audio(source_path, start_seconds, end_seconds, destination_path=None):
     return destination_path
 
 
+def prepare_audio_for_gemini(source_path, max_bytes=18 * 1024 * 1024):
+    """Prepares an audio file for Gemini API inline submission.
+    If the file is already a compact MP3 and <= max_bytes, returns (source_path, False).
+    Otherwise, downsamples/compresses to a speech-optimized Mono 16kHz MP3 to dramatically reduce
+    payload size (e.g. 60 mins -> ~14MB, 30 mins -> ~7MB), overcoming the 20MB limit.
+    Returns (prepared_path, is_temp).
+    """
+    source = Path(source_path)
+    if not source.is_file():
+        raise FileNotFoundError(f'Không tìm thấy file: {source_path}')
+
+    file_size = source.stat().st_size
+    if source.suffix.lower() == '.mp3' and file_size <= max_bytes:
+        return source, False
+
+    from audio_engine import find_ffmpeg
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        if file_size > 20 * 1024 * 1024:
+            raise ValueError('File âm thanh quá 20MB và không tìm thấy FFmpeg để nén.')
+        return source, False
+
+    dur = track_duration(source)
+    bitrate = '32k'
+    if dur > 4500:  # > 75 mins
+        bitrate = '24k'
+    elif dur > 6000:  # > 100 mins
+        bitrate = '16k'
+
+    import tempfile
+    temp_dir = source.parent
+    temp_file = Path(tempfile.mktemp(prefix='~gemini_opt_', suffix='.mp3', dir=temp_dir))
+
+    cmd = [
+        ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+        '-i', str(source),
+        '-vn',
+        '-ac', '1',
+        '-ar', '16000',
+        '-c:a', 'libmp3lame',
+        '-b:a', bitrate,
+        str(temp_file)
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    if proc.returncode != 0 or not temp_file.is_file():
+        if temp_file.exists():
+            temp_file.unlink(missing_ok=True)
+        if file_size > 20 * 1024 * 1024:
+            raise RuntimeError(f'Lỗi nén âm thanh cho Gemini: {proc.stderr[:200]}')
+        return source, False
+
+    if temp_file.stat().st_size > 20 * 1024 * 1024:
+        temp_file.unlink(missing_ok=True)
+        raise ValueError('Bản ghi quá dài vượt quá dung lượng xử lý tối đa của AI (hãy dùng công cụ Cắt đoạn để tóm tắt từng phần).')
+
+    return temp_file, True
+
+
+def format_call_minutes(path, metadata=None):
+    """Formats full call minutes/summary memo ready for export or copy to clipboard."""
+    path = Path(path)
+    if metadata is None:
+        metadata = read_json(path.with_suffix(path.suffix + '.json'))
+
+    def _fmt_time(iso_str):
+        try:
+            return datetime.fromisoformat(iso_str).strftime('%H:%M:%S ngày %d/%m/%Y')
+        except (ValueError, TypeError):
+            return str(iso_str or 'Không rõ')
+
+    caller = metadata.get('caller_name') or metadata.get('name') or path.stem
+    started = _fmt_time(metadata.get('started_at'))
+    ended = _fmt_time(metadata.get('ended_at'))
+    dur = metadata.get('duration')
+    dur_str = f"{int(dur // 60):02d} phút {int(dur % 60):02d} giây" if isinstance(dur, (int, float)) else "Chưa xác định"
+
+    lines = [
+        "============================================================",
+        "              BIÊN BẢN TÓM TẮT CUỘC GỌI ZALO",
+        "============================================================",
+        f"👤 Người liên hệ: {caller}",
+        f"📅 Thời gian gọi : {started}",
+        f"⏱ Thời lượng    : {dur_str}",
+        f"📁 Tệp ghi âm    : {path.name}",
+        "------------------------------------------------------------",
+    ]
+
+    summary = metadata.get('summary', '').strip()
+    if summary:
+        lines.append("\n📌 TÓM TẮT NỘI DUNG CUỘC GỌI:")
+        lines.append(summary)
+        lines.append("\n" + "-" * 60)
+
+    timestamps = metadata.get('timestamps', [])
+    if timestamps:
+        lines.append("\n⏱ CÁC MỐC THỜI GIAN ĐÁNH DẤU:")
+        for ts in timestamps:
+            sec = ts.get('time', 0)
+            lbl = ts.get('label', '')
+            lines.append(f"• [{int(sec//60):02d}:{int(sec%60):02d}] {lbl}")
+        lines.append("\n" + "-" * 60)
+
+    note = metadata.get('note', '').strip()
+    if note:
+        lines.append("\n📝 GHI CHÚ RIÊNG:")
+        lines.append(note)
+        lines.append("\n" + "-" * 60)
+
+    transcription = metadata.get('transcription', '').strip()
+    if transcription:
+        lines.append("\n🎙 TOÀN VĂN BẢN BÓC BĂNG (TRANSCRIPT):")
+        lines.append(transcription)
+        lines.append("\n" + "-" * 60)
+
+    lines.append("Xuất tự động từ phần mềm Ghi Âm Zalo PC • Hỗ trợ bởi Gemini AI")
+    lines.append("============================================================")
+    return "\n".join(lines)
+
+
 def transcribe_with_gemini(api_key, path, model='gemini-3.1-flash-lite', task='transcribe'):
     import base64
     import urllib.request
@@ -337,50 +478,57 @@ def transcribe_with_gemini(api_key, path, model='gemini-3.1-flash-lite', task='t
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError('Không tìm thấy file âm thanh.')
-    if path.stat().st_size > 20 * 1024 * 1024:
-        raise ValueError('File âm thanh quá 20MB. Hãy chọn bản ghi ngắn hơn hoặc xuất MP3.')
-    raw_bytes = path.read_bytes()
-    b64 = base64.b64encode(raw_bytes).decode('ascii')
-    mime = 'audio/mp3' if path.suffix.lower() == '.mp3' else 'audio/wav'
-    if task == 'summary':
-        prompt = (
-            'Bạn là thư ký chuyên nghiệp. Hãy nghe bản ghi âm cuộc gọi này và thực hiện tóm tắt chi tiết bằng tiếng Việt theo định dạng sau:\n\n'
-            '📌 TÓM TẮT NỘI DUNG CUỘC GỌI:\n'
-            '- (3-5 gạch đầu dòng tóm tắt các vấn đề cốt lõi được thảo luận)\n\n'
-            '✅ DANH SÁCH VIỆC CẦN LÀM (ACTION ITEMS):\n'
-            '- (Các cam kết, nhiệm vụ, thời hạn, mốc hẹn gặp hoặc thanh toán nếu có)\n\n'
-            '💡 ĐÁNH GIÁ THÁI ĐỘ / CẢM XÚC:\n'
-            '- (Tích cực / Hợp tác / Bình thường / Căng thẳng kèm lý do ngắn gọn)'
-        )
-    else:
-        prompt = (
-            'Bạn là thư ký chuyên nghiệp. Hãy nghe bản ghi âm cuộc gọi này và bóc băng chi tiết toàn bộ nội dung hội thoại bằng tiếng Việt:\n'
-            '- Ghi rõ vai người nói nếu phân biệt được (Người gọi / Người nhận hoặc Tên).\n'
-            '- Kèm mốc thời gian nếu có.\n'
-            'Trình bày rõ ràng, sạch sẽ, chuẩn xác.'
-        )
-    payload = {
-        'contents': [{
-            'parts': [
-                {'text': prompt},
-                {'inline_data': {'mime_type': mime, 'data': b64}}
-            ]
-        }]
-    }
-    req_data = json.dumps(payload).encode('utf-8')
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
-    req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'}, method='POST')
+
+    upload_path, is_temp = prepare_audio_for_gemini(path)
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            body = json.loads(resp.read().decode('utf-8'))
-            text = body['candidates'][0]['content']['parts'][0]['text']
-            if task == 'summary':
-                update_record_metadata(path, summary=text)
-            else:
-                update_record_metadata(path, transcription=text)
-            return text
-    except urllib.error.HTTPError as ex:
-        err_msg = ex.read().decode('utf-8', errors='ignore')
-        raise RuntimeError(f'Lỗi Gemini API ({ex.code}): {err_msg[:200]}') from ex
-    except Exception as ex:
-        raise RuntimeError(f'Không kết nối được Gemini API: {ex}') from ex
+        raw_bytes = upload_path.read_bytes()
+        b64 = base64.b64encode(raw_bytes).decode('ascii')
+        mime = 'audio/mp3' if upload_path.suffix.lower() == '.mp3' else 'audio/wav'
+        if task == 'summary':
+            prompt = (
+                'Bạn là thư ký chuyên nghiệp. Hãy nghe bản ghi âm cuộc gọi này và thực hiện tóm tắt chi tiết bằng tiếng Việt theo định dạng sau:\n\n'
+                '📌 TÓM TẮT NỘI DUNG CUỘC GỌI:\n'
+                '- (3-5 gạch đầu dòng tóm tắt các vấn đề cốt lõi được thảo luận)\n\n'
+                '✅ DANH SÁCH VIỆC CẦN LÀM (ACTION ITEMS):\n'
+                '- (Các cam kết, nhiệm vụ, thời hạn, mốc hẹn gặp hoặc thanh toán nếu có)\n\n'
+                '💡 ĐÁNH GIÁ THÁI ĐỘ / CẢM XÚC:\n'
+                '- (Tích cực / Hợp tác / Bình thường / Căng thẳng kèm lý do ngắn gọn)'
+            )
+        else:
+            prompt = (
+                'Bạn là thư ký chuyên nghiệp. Hãy nghe bản ghi âm cuộc gọi này và bóc băng chi tiết toàn bộ nội dung hội thoại bằng tiếng Việt:\n'
+                '- Ghi rõ vai người nói nếu phân biệt được (Người gọi / Người nhận hoặc Tên).\n'
+                '- Kèm mốc thời gian nếu có.\n'
+                'Trình bày rõ ràng, sạch sẽ, chuẩn xác.'
+            )
+        payload = {
+            'contents': [{
+                'parts': [
+                    {'text': prompt},
+                    {'inline_data': {'mime_type': mime, 'data': b64}}
+                ]
+            }]
+        }
+        req_data = json.dumps(payload).encode('utf-8')
+        url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
+        req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'}, method='POST')
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                body = json.loads(resp.read().decode('utf-8'))
+                text = body['candidates'][0]['content']['parts'][0]['text']
+                if task == 'summary':
+                    update_record_metadata(path, summary=text)
+                else:
+                    update_record_metadata(path, transcription=text)
+                return text
+        except urllib.error.HTTPError as ex:
+            err_msg = ex.read().decode('utf-8', errors='ignore')
+            raise RuntimeError(f'Lỗi Gemini API ({ex.code}): {err_msg[:200]}') from ex
+        except Exception as ex:
+            raise RuntimeError(f'Không kết nối được Gemini API: {ex}') from ex
+    finally:
+        if is_temp and upload_path.is_file():
+            try:
+                upload_path.unlink(missing_ok=True)
+            except Exception:
+                pass

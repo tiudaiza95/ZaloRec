@@ -10,7 +10,7 @@ from recording_library import (
     session_description, filter_records, read_json, atomic_json,
     update_record_metadata, filter_date_range, export_recordings_csv,
     add_timestamp_mark, remove_timestamp_mark, transcribe_with_gemini,
-    trim_audio
+    trim_audio, format_call_minutes
 )
 from desktop_support import play_audio_cue
 from audio_engine import track_duration
@@ -270,6 +270,7 @@ class LibraryWindow(ManagedToplevel):
             ('Chi tiết', self.show_details), ('★ Quan trọng', self.toggle_favorite),
             ('+ Đánh dấu mốc', self.add_bookmark), ('✂ Cắt đoạn', self.open_trim_dialog),
             ('Bóc băng AI', self.ai_transcribe), ('Tóm tắt AI', self.ai_summary),
+            ('📄 Xuất biên bản', self.export_minutes_selected),
             ('Làm mới', self.refresh)
         ]
         for label, command in btn_items:
@@ -574,6 +575,33 @@ class LibraryWindow(ManagedToplevel):
                 ai_box.insert('1.0', transcription)
                 ai_box.configure(state='disabled')
 
+            if summary or transcription:
+                action_frame = ctk.CTkFrame(dialog, fg_color='transparent')
+                action_frame.pack(fill='x', padx=24, pady=(2, 8))
+
+                if summary:
+                    ctk.CTkButton(
+                        action_frame, text='📋 Sao chép tóm tắt', height=32, corner_radius=8,
+                        fg_color='#30D158', hover_color='#28B84D', text_color='#FFFFFF',
+                        font=('Segoe UI', 11, 'bold'),
+                        command=lambda s=summary: self._copy_text(dialog, s, 'Đã sao chép nội dung tóm tắt!')
+                    ).pack(side='left', padx=(0, 6))
+
+                if transcription:
+                    ctk.CTkButton(
+                        action_frame, text='📋 Sao chép bóc băng', height=32, corner_radius=8,
+                        fg_color='#007AFF', hover_color='#0066CC', text_color='#FFFFFF',
+                        font=('Segoe UI', 11, 'bold'),
+                        command=lambda t=transcription: self._copy_text(dialog, t, 'Đã sao chép toàn văn bóc băng!')
+                    ).pack(side='left', padx=(0, 6))
+
+                ctk.CTkButton(
+                    action_frame, text='📄 Xuất biên bản (.txt)', height=32, corner_radius=8,
+                    fg_color=('#E8F2FF', '#172C46'), hover_color=('#D7E8FC', '#203C5C'),
+                    text_color=('#0066CC', '#64ADFF'), font=('Segoe UI', 11, 'bold'),
+                    command=lambda: self._export_call_minutes_dialog(dialog, path)
+                ).pack(side='left')
+
             ctk.CTkLabel(dialog, text='Ghi chú riêng', font=('Segoe UI', 14, 'bold')).pack(anchor='w', padx=24)
             note = ctk.CTkTextbox(dialog, height=75, wrap='word', font=('Segoe UI', 13))
             note.pack(fill='x', padx=24, pady=(4, 6))
@@ -592,6 +620,47 @@ class LibraryWindow(ManagedToplevel):
                     feedback.configure(text='Không lưu được: ' + str(ex))
             ctk.CTkButton(dialog, text='Lưu ghi chú', command=save_note, height=36).pack(pady=(6, 14))
             dialog.after(100, dialog.lift)
+
+    def _copy_text(self, parent_dialog, text_content, success_msg='Đã sao chép vào bộ nhớ tạm!'):
+        try:
+            parent_dialog.clipboard_clear()
+            parent_dialog.clipboard_append(text_content)
+            messagebox.showinfo('Đã sao chép', f'{success_msg}\n\nBạn có thể dán (Ctrl+V) ngay vào khung chat Zalo hoặc Email.', parent=parent_dialog)
+        except Exception as ex:
+            messagebox.showwarning('Không sao chép được', str(ex), parent=parent_dialog)
+
+    def _export_call_minutes_dialog(self, parent_dialog, path):
+        try:
+            content = format_call_minutes(path)
+            default_name = f"Bien_Ban_{Path(path).stem}.txt"
+            dest = filedialog.asksaveasfilename(
+                parent=parent_dialog,
+                title='Xuất biên bản tóm tắt cuộc gọi',
+                initialfile=default_name,
+                defaultextension='.txt',
+                filetypes=[('Tệp văn bản (*.txt)', '*.txt'), ('Tệp Word đơn giản (*.doc)', '*.doc'), ('Tất cả tệp (*.*)', '*.*')]
+            )
+            if dest:
+                Path(dest).write_text(content, encoding='utf-8')
+                confirm = messagebox.askyesno(
+                    'Đã xuất biên bản',
+                    f'Đã lưu biên bản thành công:\n{dest}\n\nBạn có muốn mở tệp vừa lưu không?',
+                    parent=parent_dialog
+                )
+                if confirm:
+                    try:
+                        os.startfile(dest)
+                    except Exception:
+                        pass
+        except Exception as ex:
+            messagebox.showerror('Lỗi xuất biên bản', str(ex), parent=parent_dialog)
+
+    def export_minutes_selected(self):
+        path = self.selected()
+        if not path:
+            messagebox.showinfo('Xuất biên bản', 'Hãy chọn một bản ghi trước.', parent=self)
+            return
+        self._export_call_minutes_dialog(self, path)
 
     def toggle_favorite(self):
         path = self.selected()
