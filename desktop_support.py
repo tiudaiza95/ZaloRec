@@ -22,7 +22,7 @@ def setup_logger(folder):
 
 
 class SingleInstance:
-    def __init__(self, name='ZaloCallCompanion'):
+    def __init__(self, name='ZaloRec'):
         self.api = ctypes.WinDLL('kernel32', use_last_error=True)
         self.api.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
         self.api.CreateMutexW.restype = wintypes.HANDLE
@@ -55,7 +55,7 @@ class SingleInstance:
 def create_tray(events, icon_path):
     import pystray
     from PIL import Image
-    icon = pystray.Icon('ZaloCallCompanion', Image.open(icon_path), 'Ghi Âm Zalo PC',
+    icon = pystray.Icon('ZaloRec', Image.open(icon_path), 'ZaloRec',
         pystray.Menu(
             pystray.MenuItem('Mở ứng dụng', lambda *_: events.put(('show', '')), default=True),
             pystray.MenuItem('Dừng & lưu', lambda *_: events.put(('stop', ''))),
@@ -70,10 +70,10 @@ def set_autostart(enabled):
         raise RuntimeError('Chỉ bật khởi động cùng Windows trong bản EXE đã cài.')
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
         if enabled:
-            winreg.SetValueEx(key, 'ZaloCallCompanion', 0, winreg.REG_SZ, f'"{sys.executable}"')
+            winreg.SetValueEx(key, 'ZaloRec', 0, winreg.REG_SZ, f'"{sys.executable}"')
         else:
             try:
-                winreg.DeleteValue(key, 'ZaloCallCompanion')
+                winreg.DeleteValue(key, 'ZaloRec')
             except FileNotFoundError:
                 pass
 
@@ -82,7 +82,7 @@ def autostart_enabled():
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Run') as key:
-            return bool(winreg.QueryValueEx(key, 'ZaloCallCompanion')[0])
+            return bool(winreg.QueryValueEx(key, 'ZaloRec')[0])
     except OSError:
         return False
 
@@ -123,7 +123,7 @@ def update_tray_state(icon, state):
     if getattr(icon, '_companion_state', None) == state:
         return
     icon.icon = tray_state_image(state)
-    icon.title = 'Ghi Âm Zalo PC — ' + TRAY_STATES[state][0]
+    icon.title = 'ZaloRec - ' + TRAY_STATES[state][0]
     icon._companion_state = state
 
 

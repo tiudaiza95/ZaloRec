@@ -161,7 +161,7 @@ class LibraryWindow(ManagedToplevel):
         self._dragging_seek = False
         self._cached_records = []
         self.protocol('WM_DELETE_WINDOW', self.destroy)
-        self.title('Ghi Âm Zalo PC — Bản ghi')
+        self.title('ZaloRec - Bản ghi cuộc gọi')
         self.configure(fg_color=('#F2F2F7', '#111114'))
         self.geometry('1080x780')
         self.minsize(880, 660)

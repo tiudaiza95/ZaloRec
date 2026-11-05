@@ -508,7 +508,7 @@ class AudioSession:
             raise RuntimeError('Phiên này đã được lưu: ' + manifest['saved_to'])
         if not manifest:
             for proc in psutil.process_iter(['name', 'pid']):
-                if proc.info['pid'] != os.getpid() and (proc.info['name'] or '').lower() == 'zalocallcompanion.exe':
+                if proc.info['pid'] != os.getpid() and (proc.info['name'] or '').lower() in ('zalorec.exe', 'zalocallcompanion.exe'):
                     # Old versions do not write a manifest, so do not recover while they may be writing.
                     try:
                         if proc.pid not in {p.pid for p in psutil.Process().parents()}:

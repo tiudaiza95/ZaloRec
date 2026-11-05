@@ -133,6 +133,8 @@ class DetectionTests(unittest.TestCase):
         self.assertTrue(is_zalo_process('Zalo.exe'))
         self.assertTrue(is_zalo_process('ZaloCall.exe'))
         self.assertFalse(is_zalo_process('ZaloCallCompanion.exe'))
+        self.assertFalse(is_zalo_process('ZaloRec.exe'))
+        self.assertFalse(is_zalo_process('zalorec.exe'))
 
     def test_titles_not_chat_history(self):
         self.assertTrue(looks_like_call_title('Đang gọi video - Zalo'))

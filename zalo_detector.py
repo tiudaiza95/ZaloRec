@@ -79,7 +79,7 @@ def is_call_process_window(window: WindowInfo) -> bool:
 def is_zalo_process(name: str) -> bool:
     name = name.lower().removesuffix('.exe')
     return name in ('zalo', 'zalopc', 'zalodesktop', 'zalocall', 'zalomedia') or (
-        name.startswith('zalo') and 'companion' not in name and 'recorder' not in name
+        name.startswith('zalo') and 'companion' not in name and 'recorder' not in name and 'rec' not in name
     )
 
 
@@ -280,7 +280,7 @@ def find_zalo_launcher(running_processes: dict[int, str]) -> Path | None:
 
 def describe_windows(windows: list[WindowInfo], processes: dict[int, str]) -> str:
     lines = [
-        'Ghi Âm Zalo PC - chẩn đoán nhận diện cửa sổ',
+        'ZaloRec - chẩn đoán nhận diện cửa sổ',
         'Chỉ gồm thông tin cửa sổ, không chứa tin nhắn hay bản ghi.',
         'Nếu cần nhờ hỗ trợ, hãy kiểm tra tên cửa sổ trước khi chia sẻ.', '',
         'Tiến trình:',

@@ -38,8 +38,8 @@ from zalo_detector import (
     windows_for_pids, zalo_processes, looks_like_call_title, is_call_process_window, plain,
 )
 
-APP = 'Ghi Âm Zalo PC'
-VERSION = '3.0.0 • Windows'
+APP = 'ZaloRec'
+VERSION = '3.0.0 • AI Edition'
 DEFAULT_GEMINI_KEY = ''
 BG = ('#F2F2F7', '#111114')
 SURFACE = ('#FFFFFF', '#1C1C1E')
@@ -587,7 +587,7 @@ class Companion(ctk.CTk):
         else:
             messagebox.showinfo('Hãy mở Zalo PC',
                 'Chưa tìm được đường dẫn Zalo. Bạn hãy mở ứng dụng Zalo PC từ Desktop hoặc Start Menu, '
-                'sau đó Zalo Call Companion sẽ tự kết nối.', parent=self)
+                'sau đó ZaloRec sẽ tự kết nối.', parent=self)
 
     def _initial_zalo_check(self):
         if not self.last_processes:

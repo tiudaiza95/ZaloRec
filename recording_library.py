@@ -499,7 +499,7 @@ def format_call_minutes(path, metadata=None):
         lines.append(transcription)
         lines.append("\n" + "-" * 60)
 
-    lines.append("Xuất tự động từ phần mềm Ghi Âm Zalo PC • Hỗ trợ bởi Gemini AI")
+    lines.append("Xuất tự động từ phần mềm ZaloRec • Hỗ trợ bởi Gemini AI")
     lines.append("============================================================")
     return "\n".join(lines)
 
