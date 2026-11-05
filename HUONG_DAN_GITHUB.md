@@ -3,7 +3,7 @@
 ## Cách đơn giản qua website
 
 1. Đăng nhập https://github.com, chọn **+ > New repository**.
-2. Đặt tên `ghi-am-zalo-pc`. Chọn **Private** nếu chỉ sao lưu và dùng cá nhân, hoặc **Public** nếu muốn người khác xem/tải mã nguồn. Không chọn thêm README/.gitignore vì Source đã có.
+2. Đặt tên `zalorec`. Chọn **Private** nếu chỉ sao lưu và dùng cá nhân, hoặc **Public** nếu muốn người khác xem/tải mã nguồn. Không chọn thêm README/.gitignore vì Source đã có.
 3. Tạo repository. Chọn **uploading an existing file** (hoặc Add file > Upload files).
 4. Mở thư mục **Source** của gói này, kéo các file và thư mục bên trong lên. Nhớ có cả `.gitignore`, assets, tests, packaging. Không kéo cả folder phát hành, file EXE, ZIP, bản ghi, settings hay nhật ký.
 5. Ghi commit `Release 2.9.0: Gemini 3.1 Flash-Lite AI Summary, Audio Trimming, De-noise, Waveform Visualizer, Audio Cues`, chọn **Commit changes**. Kiểm tra main.py và README.md xuất hiện ngay ở thư mục gốc repository.
@@ -23,7 +23,7 @@ Mở PowerShell trong thư mục Source. Tạo repository trống trên GitHub t
 git init -b main
 git add .
 git commit -m "Release 2.9.0"
-git remote add origin https://github.com/TEN_TAI_KHOAN/ghi-am-zalo-pc.git
+git remote add origin https://github.com/tiudaiza95/zalorec.git
 git push -u origin main
 ```
 

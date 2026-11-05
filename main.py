@@ -1,4 +1,4 @@
-"""Ghi Am Zalo PC - local call audio recorder for Windows.
+"""ZaloRec - Smart dual-channel call recorder & Gemini AI transcriber for Zalo PC.
 
 The app does NOT intercept Zalo's network traffic, modify Zalo, or access
 other users' messages. It heuristically detects call windows and offers a

@@ -1,23 +1,23 @@
 #define AppVersion "3.0.0"
 [Setup]
 AppId={{20AA6AF9-727D-445F-BB49-852A942694B1}
-AppName=Ghi Âm Zalo PC
+AppName=ZaloRec
 AppVersion={#AppVersion}
-AppVerName=Ghi Âm Zalo PC {#AppVersion}
-DefaultDirName={localappdata}\Programs\Ghi Âm Zalo PC
-DefaultGroupName=Ghi Âm Zalo PC
+AppVerName=ZaloRec {#AppVersion}
+DefaultDirName={localappdata}\Programs\ZaloRec
+DefaultGroupName=ZaloRec
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 WizardStyle=modern
 SetupIconFile=..\assets\companion.ico
-UninstallDisplayIcon={app}\ZaloCallCompanion.exe
-OutputDir=..\release\Ghi-Am-Zalo-PC-3.0.0
-OutputBaseFilename=Ghi-Am-Zalo-PC-3.0.0-Setup
+UninstallDisplayIcon={app}\ZaloRec.exe
+OutputDir=..\release\ZaloRec-3.0.0
+OutputBaseFilename=ZaloRec-3.0.0-Setup
 Compression=lzma2
 SolidCompression=yes
-AppMutex=Local\ZaloCallCompanion.Instance
+AppMutex=Local\ZaloRec.Instance
 CloseApplications=no
 RestartApplications=no
 DisableProgramGroupPage=yes
@@ -27,17 +27,17 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: checkedonc
 [Files]
 Source: "..\release\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
-Name: "{userprograms}\Ghi Âm Zalo PC"; Filename: "{app}\ZaloCallCompanion.exe"; WorkingDir: "{app}"
-Name: "{userdesktop}\Ghi Âm Zalo PC"; Filename: "{app}\ZaloCallCompanion.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userprograms}\ZaloRec"; Filename: "{app}\ZaloRec.exe"; WorkingDir: "{app}"
+Name: "{userdesktop}\ZaloRec"; Filename: "{app}\ZaloRec.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "ZaloCallCompanion"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "ZaloRec"; Flags: uninsdeletevalue
 [Run]
-Filename: "{app}\ZaloCallCompanion.exe"; Description: "Open Ghi Âm Zalo PC"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\ZaloRec.exe"; Description: "Open ZaloRec"; Flags: nowait postinstall skipifsilent unchecked
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
 var Existing: String;
 begin
   if CurStep = ssPostInstall then
-    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ZaloCallCompanion', Existing) then
-      RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ZaloCallCompanion', '"' + ExpandConstant('{app}\ZaloCallCompanion.exe') + '"');
+    if RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ZaloRec', Existing) then
+      RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ZaloRec', '"' + ExpandConstant('{app}\ZaloRec.exe') + '"');
 end;

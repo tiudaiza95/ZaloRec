@@ -1,9 +1,9 @@
-# Cài đặt và chuyển máy — Ghi Âm Zalo PC 2.9.0
+# Cài đặt và chuyển máy — ZaloRec 3.0
 
 1. Copy toàn bộ folder phát hành hoặc tải ZIP từ đám mây về máy mới; giải nén trước.
-2. Chạy **Ghi-Am-Zalo-PC-2.9.0-Setup.exe**. Bộ cài có sẵn thành phần cần để chạy, không cần Python hoặc tải FFmpeg trên máy mới.
+2. Chạy **ZaloRec-3.0.0-Setup.exe**. Bộ cài có sẵn thành phần cần để chạy, không cần Python hoặc tải FFmpeg trên máy mới.
 3. Chọn thư mục cài và shortcut Desktop rồi Install. Phần mềm cài cho tài khoản Windows hiện tại, không yêu cầu quyền quản trị.
-4. Mở Ghi Âm Zalo PC. Trong Cài đặt, chọn đúng Micro và Loa/tai nghe đang dùng trong Zalo; kiểm tra nơi lưu bản ghi. Chọn Sáng hoặc Tối trong mục Giao diện.
+4. Mở ZaloRec. Trong Cài đặt, chọn đúng Micro và Loa/tai nghe đang dùng trong Zalo; kiểm tra nơi lưu bản ghi. Chọn Sáng hoặc Tối trong mục Giao diện.
 5. Thử một cuộc gọi ngắn, mở Bản ghi để kiểm tra có tiếng cả hai bên. Nhận diện có thể khác giữa phiên bản Zalo và thiết bị âm thanh.
 
 ## Nâng cấp trên máy hiện tại

@@ -64,8 +64,8 @@
 ### Running from Source
 ```bash
 # 1. Clone repository
-git clone https://github.com/tiudaiza95/ghi-am-cuoc-goi-zalo-pc.git
-cd ghi-am-cuoc-goi-zalo-pc/Source
+git clone https://github.com/tiudaiza95/zalorec.git
+cd zalorec
 
 # 2. Install dependencies
 py -3 -m pip install -r requirements.txt

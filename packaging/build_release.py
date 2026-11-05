@@ -29,13 +29,13 @@ def main():
     if not compiler:
         raise SystemExit('Install Inno Setup 6: winget install -e --id JRSoftware.InnoSetup')
     run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-q'])
-    run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--distpath', f'dist/{VERSION}', 'ZaloCallCompanion.spec'])
+    run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--distpath', f'dist/{VERSION}', 'ZaloRec.spec'])
     payload = ROOT / 'release/payload'
-    output = ROOT / f'release/Ghi-Am-Zalo-PC-{VERSION}'
+    output = ROOT / f'release/ZaloRec-{VERSION}'
     source = output / 'Source'
     for folder in [payload / 'tools', payload / 'licenses', output, source]:
         folder.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ROOT / f'dist/{VERSION}/ZaloCallCompanion.exe', payload)
+    shutil.copy2(ROOT / f'dist/{VERSION}/ZaloRec.exe', payload)
     shutil.copy2(ffmpeg, payload / 'tools/ffmpeg.exe')
     ffmpeg_root = Path(ffmpeg).parent.parent
     for name in ['LICENSE', 'README.txt']:
@@ -79,7 +79,7 @@ def main():
                 destination = source / item.relative_to(ROOT)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, destination)
-    source_zip = output / f'Ghi-Am-Zalo-PC-{VERSION}-Source.zip'
+    source_zip = output / f'ZaloRec-{VERSION}-Source.zip'
     with zipfile.ZipFile(source_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
         for item in source.rglob('*'):
             if item.is_file():
