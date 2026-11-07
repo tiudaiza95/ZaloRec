@@ -122,6 +122,8 @@ def delete_recording(path):
 def rename_recording(path, name):
     path = Path(path)
     name = name.strip()
+    if name.lower().endswith(path.suffix.lower()):
+        name = name[:-len(path.suffix)].strip()
     if not name or name in ('.', '..') or name.endswith(('.', ' ')) or len(name) > 160:
         raise ValueError('Tên tệp không hợp lệ hoặc quá dài.')
     if re.search(r'[<>:"/\\|?*\x00-\x1f]', name) or re.match(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)', name, re.I):
@@ -407,15 +409,22 @@ def prepare_audio_for_gemini(source_path, max_bytes=18 * 1024 * 1024):
         return source, False
 
     dur = track_duration(source)
+    if dur <= 0.0:
+        sidecar = source.with_suffix(source.suffix + '.json')
+        if sidecar.is_file():
+            try:
+                dur = float(read_json(sidecar).get('duration') or 0.0)
+            except (ValueError, TypeError):
+                dur = 0.0
     bitrate = '32k'
-    if dur > 4500:  # > 75 mins
-        bitrate = '24k'
-    elif dur > 6000:  # > 100 mins
+    if dur > 6000:  # > 100 mins
         bitrate = '16k'
+    elif dur > 4500:  # > 75 mins
+        bitrate = '24k'
 
-    import tempfile
+    import uuid
     temp_dir = source.parent
-    temp_file = Path(tempfile.mktemp(prefix='~gemini_opt_', suffix='.mp3', dir=temp_dir))
+    temp_file = temp_dir / f'~gemini_opt_{uuid.uuid4().hex}.mp3'
 
     cmd = [
         ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
@@ -547,7 +556,7 @@ def transcribe_with_gemini(api_key, path, model='gemini-2.5-flash', task='transc
         }
         req_data = json.dumps(payload).encode('utf-8')
         models_to_try = [model]
-        for fallback in ('gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'):
+        for fallback in ('gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash'):
             if fallback not in models_to_try:
                 models_to_try.append(fallback)
 
@@ -558,7 +567,15 @@ def transcribe_with_gemini(api_key, path, model='gemini-2.5-flash', task='transc
             try:
                 with urllib.request.urlopen(req, timeout=90) as resp:
                     body = json.loads(resp.read().decode('utf-8'))
-                    text = body['candidates'][0]['content']['parts'][0]['text']
+                    candidates = body.get('candidates') or []
+                    if not candidates:
+                        block_reason = body.get('promptFeedback', {}).get('blockReason', 'Không rõ')
+                        raise RuntimeError(f'Gemini không phản hồi văn bản (Bị chặn: {block_reason}).')
+                    parts = candidates[0].get('content', {}).get('parts', [])
+                    text = parts[0].get('text', '') if parts and isinstance(parts[0], dict) else ''
+                    if not text:
+                        finish_reason = candidates[0].get('finishReason', 'Không có nội dung')
+                        raise RuntimeError(f'Gemini không tạo được văn bản (Lý do: {finish_reason}).')
                     if task == 'summary':
                         update_record_metadata(path, summary=text)
                     else:

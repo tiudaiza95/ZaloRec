@@ -54,7 +54,9 @@ class WaveformCanvas(tk.Canvas):
             return
         dark = ctk.get_appearance_mode() == 'Dark'
         bg_color = '#111114' if dark else '#F2F2F7'
-        self.configure(bg=bg_color)
+        if getattr(self, '_current_bg', None) != bg_color:
+            self.configure(bg=bg_color)
+            self._current_bg = bg_color
         bar_count = len(self.peaks) if self.peaks else 60
         gap = 2
         bar_w = max(2, (w - (bar_count - 1) * gap) / bar_count)
@@ -101,7 +103,7 @@ class TrimDialog(ManagedToplevel):
         self.start_entry.insert(0, '0.0')
         self.start_entry.pack(side='left', padx=4)
         ctk.CTkButton(row1, text='Lấy vị trí hiện tại', width=130, height=28,
-                      command=lambda: self._set_field(self.start_entry, current_pos_sec)).pack(side='left', padx=6)
+                      command=lambda: self._set_field(self.start_entry, self._get_current_pos(current_pos_sec))).pack(side='left', padx=6)
 
         row2 = ctk.CTkFrame(body, fg_color='transparent')
         row2.pack(fill='x', padx=20, pady=4)
@@ -110,7 +112,7 @@ class TrimDialog(ManagedToplevel):
         self.end_entry.insert(0, f'{self.duration:.1f}')
         self.end_entry.pack(side='left', padx=4)
         ctk.CTkButton(row2, text='Lấy vị trí hiện tại', width=130, height=28,
-                      command=lambda: self._set_field(self.end_entry, current_pos_sec)).pack(side='left', padx=6)
+                      command=lambda: self._set_field(self.end_entry, self._get_current_pos(current_pos_sec))).pack(side='left', padx=6)
 
         self.status_lbl = ctk.CTkLabel(body, text='', font=('Segoe UI', 11), text_color='#FF9500')
         self.status_lbl.pack(pady=8)
@@ -119,6 +121,15 @@ class TrimDialog(ManagedToplevel):
         btn_row.pack(pady=(4, 12))
         ctk.CTkButton(btn_row, text='Hủy', width=100, command=self.destroy, fg_color='#48484A').pack(side='left', padx=6)
         ctk.CTkButton(btn_row, text='Cắt & Lưu file mới', width=160, command=self._do_trim, fg_color='#007AFF').pack(side='left', padx=6)
+
+    def _get_current_pos(self, fallback):
+        try:
+            if hasattr(self.master, 'player') and self.master.player.path and self.master.player.path.resolve() == self.path.resolve():
+                _, pos_ms = self.master.player.status()
+                return pos_ms / 1000.0
+        except Exception:
+            pass
+        return fallback
 
     def _set_field(self, entry, val):
         entry.delete(0, 'end')
@@ -558,13 +569,24 @@ class LibraryWindow(ManagedToplevel):
                 ctk.CTkLabel(dialog, text='Mốc thời gian (bấm để nghe từ mốc):', font=('Segoe UI', 13, 'bold')).pack(anchor='w', padx=24, pady=(4, 2))
                 ts_frame = ctk.CTkScrollableFrame(dialog, height=52, orientation='horizontal', fg_color='transparent')
                 ts_frame.pack(fill='x', padx=24, pady=(0, 6))
+                def _jump_to_mark(s):
+                    try:
+                        if not self.player.path or self.player.path.resolve() != path.resolve():
+                            self.select_path(path)
+                            self.player.load(path)
+                        self.player.seek(int(s * 1000))
+                        if self.player.status()[0] != 'playing':
+                            self.play()
+                    except Exception:
+                        pass
+
                 for ts in timestamps:
                     sec = ts.get('time', 0)
                     lbl = ts.get('label', '')
                     time_str = f"{int(sec//60):02d}:{int(sec%60):02d}"
                     ctk.CTkButton(ts_frame, text=f"⏱ {time_str} - {lbl}", height=30, corner_radius=8,
                                   fg_color=('#E8F2FF', '#172C46'), text_color=('#0066CC', '#64ADFF'),
-                                  command=lambda s=sec: (self.player.seek(int(s * 1000)), self.play() if self.player.status()[0] != 'playing' else None)).pack(side='left', padx=3)
+                                  command=lambda s=sec: _jump_to_mark(s)).pack(side='left', padx=3)
 
             text = ctk.CTkTextbox(dialog, height=140, font=('Segoe UI', 13), wrap='word', corner_radius=14)
             text.pack(fill='x', padx=24, pady=(0, 8))
@@ -653,7 +675,7 @@ class LibraryWindow(ManagedToplevel):
                 filetypes=[('Tệp văn bản (*.txt)', '*.txt'), ('Tệp Word đơn giản (*.doc)', '*.doc'), ('Tất cả tệp (*.*)', '*.*')]
             )
             if dest:
-                Path(dest).write_text(content, encoding='utf-8')
+                Path(dest).write_text(content, encoding='utf-8-sig')
                 confirm = messagebox.askyesno(
                     'Đã xuất biên bản',
                     f'Đã lưu biên bản thành công:\n{dest}\n\nBạn có muốn mở tệp vừa lưu không?',
@@ -776,7 +798,7 @@ class LibraryWindow(ManagedToplevel):
         )
         if not confirm:
             return
-        if self.player.path == path:
+        if self.player.path and self.player.path.resolve() == path.resolve():
             self.stop_playback()
         try:
             delete_recording(path)
@@ -792,7 +814,7 @@ class LibraryWindow(ManagedToplevel):
         name = ctk.CTkInputDialog(title='Đổi tên bản ghi', text='Tên mới (không cần .mp3 hoặc .wav):').get_input()
         if name is not None:
             try:
-                if self.player.path == path:
+                if self.player.path and self.player.path.resolve() == path.resolve():
                     self.stop_playback()
                 destination = rename_recording(path, name)
                 self.refresh()

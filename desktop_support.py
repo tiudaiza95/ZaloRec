@@ -138,14 +138,24 @@ class GlobalHotkeyListener(threading.Thread):
 
     def run(self):
         user32 = ctypes.WinDLL('user32', use_last_error=True)
+        user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+        user32.RegisterHotKey.restype = wintypes.BOOL
+        user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.UnregisterHotKey.restype = wintypes.BOOL
+        user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT, wintypes.UINT]
+        user32.PeekMessageW.restype = wintypes.BOOL
+
         HOTKEY_ID = 101
         WM_HOTKEY = 0x0312
-        if not user32.RegisterHotKey(None, HOTKEY_ID, self.modifiers, self.vk):
+        registered = user32.RegisterHotKey(None, HOTKEY_ID, self.modifiers, self.vk)
+        if not registered and (self.modifiers & 0x4000):
+            registered = user32.RegisterHotKey(None, HOTKEY_ID, self.modifiers & ~0x4000, self.vk)
+        if not registered:
             return
         msg = wintypes.MSG()
         try:
             while not self._stop.is_set():
-                if user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
                     if msg.message == WM_HOTKEY:
                         self.events.put(('hotkey', 'toggle'))
                 time.sleep(0.05)

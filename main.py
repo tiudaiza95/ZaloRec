@@ -246,9 +246,12 @@ class Companion(ctk.CTk):
             self.log('Chưa kiểm tra được phiên cũ: ' + str(ex))
 
     def _desktop_poll(self):
+        if getattr(self, '_destroyed', False):
+            return
         if self.instance and self.instance.requested_show():
             self.show_window()
-        self.after(250, self._desktop_poll)
+        if not getattr(self, '_destroyed', False):
+            self.after(250, self._desktop_poll)
 
     def show_window(self):
         self.deiconify()
@@ -444,7 +447,10 @@ class Companion(ctk.CTk):
                 pass
             self.library = None
         if self.tray:
-            self.tray.stop()
+            try:
+                self.tray.stop()
+            except Exception:
+                pass
             self.tray = None
         super().destroy()
 
@@ -649,9 +655,14 @@ class Companion(ctk.CTk):
         def accept(name=''):
             self.pending_popup = None
             if key is not None and key not in self.active_call_keys:
-                self.log('Cuộc gọi không còn được nhận diện; bỏ qua yêu cầu ghi âm cũ.')
-                return
-            self.current_call_key = key
+                if len(self.active_call_keys) == 1:
+                    self.current_call_key = next(iter(self.active_call_keys))
+                    self.log('Cửa sổ cuộc gọi đã cập nhật; tiếp tục ghi với cửa sổ mới.')
+                else:
+                    self.log('Cuộc gọi không còn được nhận diện; bỏ qua yêu cầu ghi âm cũ.')
+                    return
+            else:
+                self.current_call_key = key
             self.current_caller_name = name
             self.lost_call_since = None
             self._start_recording()
@@ -930,7 +941,8 @@ class Companion(ctk.CTk):
         except Exception as ex:
             self.log('Lỗi nhận diện tạm thời: ' + str(ex)[:95])
         self._sync_tray()
-        self.after(750, self._poll)
+        if not getattr(self, '_destroyed', False):
+            self.after(750, self._poll)
 
     def _clock(self):
         self.recorder.refresh()
@@ -964,7 +976,8 @@ class Companion(ctk.CTk):
         if getattr(self, '_test_mode', False) is True and self.recorder.state == 'recording' and self._test_deadline is not None:
             remaining = max(0, int(self._test_deadline - time.monotonic() + 0.999))
             self.audio_hint.configure(text=f'Thu thử còn {remaining} giây • Hãy nói vào micro và phát âm thanh trên loa.', text_color=BLUE)
-        self.after(500, self._clock)
+        if not getattr(self, '_destroyed', False):
+            self.after(500, self._clock)
 
     def on_close(self):
         if self.recorder.state in ('starting', 'recording'):

@@ -30,15 +30,28 @@ class AudioPlayer:
     def load(self, path):
         self.close()
         path = Path(path).resolve(strict=True)
-        try:
-            self.command(f'open "{path}" type mpegvideo alias {self.alias}')
-        except Exception:
-            # Fall back to Windows 8.3 short path if MCI parser struggles with Unicode
-            buf = ctypes.create_unicode_buffer(1024)
-            kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-            res = kernel32.GetShortPathNameW(str(path), buf, len(buf))
-            short_path = buf.value if res > 0 else str(path)
-            self.command(f'open "{short_path}" type mpegvideo alias {self.alias}')
+        opened = False
+        last_err = None
+        for cmd_open in (
+            f'open "{path}" type mpegvideo alias {self.alias}',
+            None,  # Fall back to Windows 8.3 short path if MCI struggles with Unicode
+            f'open "{path}" alias {self.alias}',
+        ):
+            if cmd_open is None:
+                buf = ctypes.create_unicode_buffer(1024)
+                kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+                res = kernel32.GetShortPathNameW(str(path), buf, len(buf))
+                short_path = buf.value if res > 0 else str(path)
+                cmd_open = f'open "{short_path}" type mpegvideo alias {self.alias}'
+            try:
+                self.command(cmd_open)
+                opened = True
+                break
+            except Exception as e:
+                last_err = e
+        if not opened and last_err:
+            raise last_err
+
         self.path = path
         try:
             self.command(f'set {self.alias} time format milliseconds')
@@ -52,8 +65,16 @@ class AudioPlayer:
     def status(self):
         if not self.path:
             return 'stopped', 0
-        return (self.command(f'status {self.alias} mode'),
-                int(self.command(f'status {self.alias} position')))
+        try:
+            mode = self.command(f'status {self.alias} mode') or 'stopped'
+        except Exception:
+            mode = 'stopped'
+        try:
+            pos_str = self.command(f'status {self.alias} position')
+            pos = int(pos_str) if pos_str and pos_str.strip().isdigit() else 0
+        except Exception:
+            pos = 0
+        return mode, pos
 
     def toggle(self):
         if not self.path:
@@ -77,7 +98,10 @@ class AudioPlayer:
     def set_volume(self, percent):
         value = max(0, min(100, int(percent)))
         if self.path:
-            self.command(f'setaudio {self.alias} volume to {value * 10}')
+            try:
+                self.command(f'setaudio {self.alias} volume to {value * 10}')
+            except Exception:
+                pass
         self.volume = value
 
     def set_speed(self, factor):
@@ -95,6 +119,10 @@ class AudioPlayer:
 
     def close(self):
         if self.path:
-            self.command(f'close {self.alias}')
-            self.path = None
-            self.length = 0
+            try:
+                self.command(f'close {self.alias}')
+            except Exception:
+                pass
+            finally:
+                self.path = None
+                self.length = 0

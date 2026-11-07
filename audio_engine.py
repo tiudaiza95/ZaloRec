@@ -476,9 +476,6 @@ class AudioSession:
                 if max_dur < 5.0:
                     shutil.rmtree(temp, ignore_errors=True)
                     outcome = ('discarded', f'Cuộc gọi kết thúc quá nhanh ({max_dur:.1f}s, nhỡ hoặc từ chối) — tự động bỏ qua.')
-                    self.recorded_from = None
-                    self.state = 'idle'
-                    self.events.put(outcome)
                     return
             self._save_tracks(temp, self.recording_file, self._file_kind)
             outcome = ('saved', str(self.recording_file))

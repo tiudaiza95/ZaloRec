@@ -20,6 +20,8 @@ class SmoothProgress(ctk.CTkProgressBar):
         start = self._shown
         def frame(step=1):
             self._motion_job = None
+            if not self.winfo_exists():
+                return
             t = step / 5
             self._shown = start + (value - start) * (1 - (1 - t) ** 3)
             super(SmoothProgress, self).set(self._shown)
@@ -137,6 +139,10 @@ class MiniOverlay(ManagedToplevel):
     def _on_drag(self, event):
         x = event.x_root - self._drag_data['x']
         y = event.y_root - self._drag_data['y']
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        x = max(0, min(screen_w - 60, x))
+        y = max(0, min(screen_h - 40, y))
         self.geometry(f"+{x}+{y}")
 
     def update_time(self, time_str):
