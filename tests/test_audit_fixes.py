@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from audio_player import AudioPlayer
 from recording_library import (
     atomic_json,
+    cleanup_stale_temp_files,
     prepare_audio_for_gemini,
     rename_recording,
     transcribe_with_gemini,
@@ -112,6 +113,61 @@ class AuditFixesTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 transcribe_with_gemini('test_key', mp3)
             self.assertIn('SAFETY', str(ctx.exception))
+
+    def test_cleanup_stale_temp_files(self):
+        import os
+        import time
+        import wave
+
+        rec_dir = self.dir / 'Recordings'
+        checks_dir = self.dir / 'AudioChecks'
+        rec_dir.mkdir()
+        checks_dir.mkdir()
+
+        old_ts = time.time() - 7200  # 2 hours ago
+        very_old_ts = time.time() - 48 * 3600  # 2 days ago
+
+        # Orphan Gemini temp file (old -> removed) and fresh one (kept)
+        old_gem = rec_dir / '~gemini_opt_old.mp3'
+        old_gem.write_bytes(b'123')
+        os.utime(old_gem, (old_ts, old_ts))
+
+        new_gem = rec_dir / '~gemini_opt_new.mp3'
+        new_gem.write_bytes(b'123')
+
+        # Empty crash folder older than 24h -> removed
+        empty_temp = rec_dir / 'zcc_temp_empty'
+        empty_temp.mkdir()
+        os.utime(empty_temp, (very_old_ts, very_old_ts))
+
+        # Recoverable crash folder with valid audio older than 24h -> MUST be preserved
+        valid_temp = rec_dir / 'zcc_temp_valid'
+        valid_temp.mkdir()
+        wav = valid_temp / 'speaker.wav'
+        with wave.open(str(wav), 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(b'\x00\x00' * 1600)
+        os.utime(valid_temp, (very_old_ts, very_old_ts))
+
+        # 5 audio check clips -> keep newest 3, remove oldest 2
+        for idx in range(5):
+            clip = checks_dir / f'check_{idx}.mp3'
+            clip.write_bytes(b'audio')
+            sidecar = clip.with_suffix('.mp3.json')
+            sidecar.write_text('{}', encoding='utf-8')
+            t = time.time() - (5 - idx) * 600
+            os.utime(clip, (t, t))
+
+        removed = cleanup_stale_temp_files(rec_dir, checks_dir, max_age_hours=1.0, keep_audio_checks=3)
+        self.assertEqual(removed, 4)
+        self.assertFalse(old_gem.exists())
+        self.assertTrue(new_gem.exists())
+        self.assertFalse(empty_temp.exists())
+        self.assertTrue(valid_temp.exists())
+        remaining_clips = sorted(p.name for p in checks_dir.glob('*.mp3'))
+        self.assertEqual(remaining_clips, ['check_2.mp3', 'check_3.mp3', 'check_4.mp3'])
 
 
 if __name__ == '__main__':

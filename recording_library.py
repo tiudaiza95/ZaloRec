@@ -310,6 +310,59 @@ def cleanup_old_recordings(folder, days):
     return deleted
 
 
+def cleanup_stale_temp_files(folder, audio_checks_folder=None, max_age_hours=1.0, keep_audio_checks=3):
+    """Remove orphaned temporary compression/partial files, empty crash dirs, and old test clips."""
+    import shutil
+    import time
+
+    now = time.time()
+    age_cutoff = now - max_age_hours * 3600
+    empty_dir_cutoff = now - 24 * 3600
+    removed = 0
+
+    folder = Path(folder)
+    if folder.is_dir():
+        for item in folder.iterdir():
+            try:
+                if item.is_file() and (item.name.startswith('~gemini_opt_') or '.partial.' in item.name):
+                    if item.stat().st_mtime < age_cutoff:
+                        item.unlink(missing_ok=True)
+                        removed += 1
+                elif item.is_dir() and item.name.startswith('zcc_temp_'):
+                    manifest = read_json(item / 'session.json')
+                    if live_owner(manifest):
+                        continue
+                    has_audio = any(track_duration(item / f'{role}.wav') > 0 for role in ('speaker', 'microphone'))
+                    if not has_audio and item.stat().st_mtime < empty_dir_cutoff:
+                        shutil.rmtree(item, ignore_errors=True)
+                        removed += 1
+            except OSError:
+                pass
+
+    if audio_checks_folder:
+        checks = Path(audio_checks_folder)
+        if checks.is_dir():
+            clips = [p for p in checks.iterdir() if p.is_file() and p.suffix.lower() in ('.mp3', '.wav')]
+            clips.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            for old_clip in clips[max(0, int(keep_audio_checks)):]:
+                try:
+                    old_clip.unlink(missing_ok=True)
+                    old_clip.with_suffix(old_clip.suffix + '.json').unlink(missing_ok=True)
+                    removed += 1
+                except OSError:
+                    pass
+            for item in checks.iterdir():
+                if item.is_dir() and item.name.startswith('zcc_temp_'):
+                    try:
+                        manifest = read_json(item / 'session.json')
+                        if not live_owner(manifest) and item.stat().st_mtime < age_cutoff:
+                            shutil.rmtree(item, ignore_errors=True)
+                            removed += 1
+                    except OSError:
+                        pass
+    return removed
+
+
 def add_timestamp_mark(path, seconds, label=''):
     path = Path(path)
     sidecar = path.with_suffix(path.suffix + '.json')

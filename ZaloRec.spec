@@ -17,7 +17,14 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'numpy', 'pandas', 'pyarrow', 'streamlit', 'playwright', 'altair',
+        'ccxt', 'uvicorn', 'starlette', 'aiohttp', 'jinja2', 'capstone',
+        'cryptography', 'matplotlib', 'scipy', 'pytest', 'unittest',
+        'pydoc', 'doctest', 'sqlite3', 'IPython', 'orjson', 'PyAutoGUI',
+        'PyScreeze', 'PyGetWindow', 'uiautomation', 'mss', 'tornado',
+        'watchdog', 'websockets', 'winloop', 'click', 'pydeck', 'narwhals',
+    ],
     noarchive=False,
     optimize=0,
 )

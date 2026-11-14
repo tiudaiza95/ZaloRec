@@ -66,7 +66,7 @@ def main():
     for item in (Path(sys.base_prefix) / 'tcl').glob('*/license.terms'):
         shutil.copy2(item, payload / 'licenses' / (item.parent.name + '-license.txt'))
     (ROOT / 'requirements-lock.txt').write_text('\n'.join(f'{k}=={v}' for k,v in versions.items()) + '\n', encoding='utf-8')
-    for name in ['README.md', 'HUONG_DAN_CAI_DAT.md', 'HUONG_DAN_GITHUB.md', 'THIRD_PARTY.md', 'PHIEN_BAN_2.9.0.md']:
+    for name in ['README.md', 'HUONG_DAN_CAI_DAT.md', 'HUONG_DAN_GITHUB.md', 'THIRD_PARTY.md', 'PHIEN_BAN_3.0.0.md', 'LICENSE']:
         shutil.copy2(ROOT / name, output)
         shutil.copy2(ROOT / name, payload)
     # Whitelist source files: never copy user settings, recordings or logs.
@@ -95,6 +95,8 @@ def main():
         for item in output.rglob('*'):
             if item.is_file():
                 archive.write(item, Path(output.name) / item.relative_to(output))
+    for stale in [ROOT / 'build', ROOT / 'dist', payload]:
+        shutil.rmtree(stale, ignore_errors=True)
     print(f'RELEASE: {output}\nCLOUD BACKUP: {bundle}')
 
 

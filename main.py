@@ -25,7 +25,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 from recording_names import caller_from_title
-from recording_library import atomic_json, recovery_candidates, read_json, cleanup_old_recordings
+from recording_library import atomic_json, recovery_candidates, read_json, cleanup_old_recordings, cleanup_stale_temp_files
 from library_window import LibraryWindow
 from ui_effects import ManagedToplevel, cancel_root_callbacks, MiniOverlay
 from desktop_support import SingleInstance, setup_logger, create_tray, set_autostart, autostart_enabled, update_tray_state, GlobalHotkeyListener, play_audio_cue
@@ -222,6 +222,7 @@ class Companion(ctk.CTk):
             except Exception as ex:
                 self.logger.debug('Hotkey error: %s', ex)
 
+        self.after(2500, self._run_startup_cleanup)
         if self.retention_days > 0:
             self.after(3000, self._run_retention_cleanup)
 
@@ -338,6 +339,14 @@ class Companion(ctk.CTk):
                 self.log('Đã xuất nhật ký hỗ trợ. Xem lại tên và đường dẫn trước khi chia sẻ.')
             except OSError as ex:
                 messagebox.showerror('Xuất nhật ký', str(ex), parent=self)
+
+    def _run_startup_cleanup(self):
+        def _worker():
+            try:
+                cleanup_stale_temp_files(self.folder, app_root() / 'Data' / 'AudioChecks')
+            except Exception as ex:
+                self.logger.debug('Startup temp cleanup error: %s', ex)
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _run_retention_cleanup(self):
         try:
